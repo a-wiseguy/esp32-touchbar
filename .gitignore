@@ -1,3 +1,7 @@
+# MQTT config ignored to prevent credentials pushed
+mqtt_config.h
+src/touchbar/mqtt_config.h
+
 # Prerequisites
 *.d
 

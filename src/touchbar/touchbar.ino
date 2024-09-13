@@ -51,6 +51,7 @@ extern lv_obj_t *slider_label;
 
 // external objs
 extern lv_obj_t *vol_slider;
+extern lv_obj_t *nav_btns[4];
 
 // Forward declarations of event handler functions
 void slider_event_cb(lv_event_t *e);
@@ -179,16 +180,30 @@ void mqtt_volume_cb(char *topic, byte *payload, unsigned int length)
         return;
     }
 
-    // Get the volume value from the message
-    int volume = doc["volume"];
-    Serial.print("Received volume: ");
-    Serial.println(volume);
+    // Handle messages based on the topic
+    if (strcmp(topic, TOPIC_VOLUME) == 0)
+    {
+        // Get the volume value from the message
+        int volume = doc["volume"];
+        Serial.print("Received volume: ");
+        Serial.println(volume);
 
-    lv_slider_set_value(vol_slider, volume, LV_ANIM_OFF); // Set the slider value without animation
-    char buf[8];
-    lv_snprintf(buf, sizeof(buf), "%d%%", volume);
-    lv_label_set_text(slider_label, buf);
-
+        lv_slider_set_value(vol_slider, volume, LV_ANIM_OFF); // Set the slider value without animation
+        char buf[8];
+        lv_snprintf(buf, sizeof(buf), "%d%%", volume);
+        lv_label_set_text(slider_label, buf);
+    }
+    else if (strcmp(topic, TOPIC_VOLUME_MUTE) == 0)
+    {
+        bool muted = doc["mute"];
+        Serial.print("Received mute toggle: ");
+        Serial.println(muted);
+        if (muted == 1) {
+            lv_obj_add_state(nav_btns[0], LV_STATE_CHECKED);
+        } else {
+            lv_obj_clear_state(nav_btns[0], LV_STATE_CHECKED);
+        }
+    }
 }
 
 void slider_event_cb(lv_event_t *e)
@@ -213,7 +228,7 @@ void slider_event_cb(lv_event_t *e)
         char jsonBuffer[128];
         serializeJson(doc, jsonBuffer, sizeof(jsonBuffer));
 
-        mqttClient.publish(TOPIC_VOLUME, jsonBuffer);
+        mqttClient.publish(TOPIC_VOLUME, jsonBuffer, true);
     }
 }
 
@@ -231,7 +246,12 @@ void nav_mute_event_cb(lv_event_t *e)
         Serial.print("mute is checked, publishing MUTE");
         if (mqttClient.connected())
         {
-            mqttClient.publish(TOPIC_VOLUME, "MUTE", true);
+            StaticJsonDocument<128> doc;
+            doc["source"] = "esp32";
+            doc["mute"] = 1;
+            char jsonBuffer[128];
+            serializeJson(doc, jsonBuffer, sizeof(jsonBuffer));
+            mqttClient.publish(TOPIC_VOLUME_MUTE, jsonBuffer, true);
         }
     }
     else
@@ -239,7 +259,12 @@ void nav_mute_event_cb(lv_event_t *e)
         Serial.print("mute is unchecked, publishing UNMUTE");
         if (mqttClient.connected())
         {
-            mqttClient.publish(TOPIC_VOLUME, "UNMUTE", true);
+            StaticJsonDocument<128> doc;
+            doc["source"] = "esp32";
+            doc["mute"] = 0;
+            char jsonBuffer[128];
+            serializeJson(doc, jsonBuffer, sizeof(jsonBuffer));
+            mqttClient.publish(TOPIC_VOLUME_MUTE, jsonBuffer, true);
         }
     }
 }
@@ -289,6 +314,10 @@ void connect_mqtt()
             mqttClient.subscribe(TOPIC_VOLUME);
             Serial.print("Subscribed to topic: ");
             Serial.println(TOPIC_VOLUME);
+
+            mqttClient.subscribe(TOPIC_VOLUME_MUTE);
+            Serial.print("Subscribed to topic: ");
+            Serial.println(TOPIC_VOLUME_MUTE);
         }
         else
         {
@@ -458,16 +487,18 @@ void loop()
     delay(1); // Short delay to prevent overwhelming the CPU.
 
     // Reconnect to WiFi if connection is lost
-    if (WiFi.status() != WL_CONNECTED) {
-        setup_wifi();  // Reconnect to WiFi if needed
+    if (WiFi.status() != WL_CONNECTED)
+    {
+        setup_wifi(); // Reconnect to WiFi if needed
     }
 
     // Reconnect if the client is disconnected
-    if (!mqttClient.connected()) {
-        connect_mqtt();  // Reconnect to MQTT if needed
+    if (!mqttClient.connected())
+    {
+        connect_mqtt(); // Reconnect to MQTT if needed
     }
 
-    mqttClient.loop(); 
+    mqttClient.loop();
 
     // manage the timing of when the screen gets updated.
     if (transfer_num <= 0 && lcd_PushColors_len <= 0)

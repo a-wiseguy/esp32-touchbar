@@ -8,6 +8,7 @@ extern lv_obj_t *main_menu;
 extern lv_obj_t *volume_screen;
 extern lv_obj_t *wifi_screen;
 extern lv_obj_t *slider_label;
+extern lv_obj_t *vol_slider;
 
 // Forward declarations for event callbacks
 void nav_volume_event_cb(lv_event_t *e);

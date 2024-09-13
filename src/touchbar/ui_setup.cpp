@@ -6,6 +6,7 @@ lv_obj_t *volume_screen;
 lv_obj_t *wifi_screen;
 lv_obj_t *slider_label;
 lv_obj_t *nav_btns[4];
+lv_obj_t *vol_slider;
 
 static lv_style_t style_large_text; 
 static lv_style_t style_nav_btn;
@@ -65,17 +66,18 @@ lv_obj_t* setup_volume_screen()
     volume_screen = lv_obj_create(NULL);
 
     // Create and configure the slider
-    lv_obj_t *slider = lv_slider_create(volume_screen);
-    lv_obj_align(slider, LV_ALIGN_CENTER, 0, 0);
-    lv_slider_set_range(slider, 0, 100);
-    lv_slider_set_value(slider, 50, LV_ANIM_ON);
-    lv_obj_set_size(slider, 400, 25);
-    lv_obj_add_event_cb(slider, slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    vol_slider = lv_slider_create(volume_screen);
+    lv_obj_align(vol_slider, LV_ALIGN_CENTER, 0, 0);
+    lv_slider_set_range(vol_slider, 0, 100);
+    // set as fallback if not from mqtt?
+    // lv_slider_set_value(vol_slider, 50, LV_ANIM_ON);
+    lv_obj_set_size(vol_slider, 400, 35);
+    lv_obj_add_event_cb(vol_slider, slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
     // slider volume percentage label
     slider_label = lv_label_create(volume_screen);
-    lv_label_set_text(slider_label, "50%");
-    lv_obj_align_to(slider_label, slider, LV_ALIGN_OUT_TOP_MID, 0, -10);
+    // lv_label_set_text(slider_label, "50%");
+    lv_obj_align_to(slider_label, vol_slider, LV_ALIGN_OUT_TOP_MID, 0, -25);
 
     // Create a back button
     lv_obj_t *back_btn = lv_btn_create(volume_screen);

@@ -1,11 +1,11 @@
-#include "lvgl.h" //display library
+#include "lvgl.h"      //display library
 #include "AXS15231B.h" // touch controller
 #include <Arduino.h>
 #include <Wire.h>
 #include <WiFi.h>
 #include <PubSubClient.h> // mqtt client
-#include "ui_setup.h" // menu layouts
-#include "mqtt_config.h" // mqtt config
+#include "ui_setup.h"     // menu layouts
+#include "mqtt_config.h"  // mqtt config
 
 // two buffers to implement double buffering for better render performance
 static lv_disp_draw_buf_t draw_buf;
@@ -180,21 +180,28 @@ void nav_volume_event_cb(lv_event_t *e)
 
 void nav_mute_event_cb(lv_event_t *e)
 {
-    lv_obj_t *label = (lv_obj_t *)lv_event_get_user_data(e);
-    const char *current_text = lv_label_get_text(label);
-    if (strcmp(current_text, LV_SYMBOL_VOLUME_MAX) == 0)
+    lv_obj_t * btn = lv_event_get_target(e);
+    if (lv_obj_has_state(btn, LV_STATE_CHECKED))
     {
-        lv_label_set_text(label, LV_SYMBOL_MUTE);
+        Serial.print("mute is checked, publishing MUTE");
+        if (mqttClient.connected())
+        {
+            mqttClient.publish(TOPIC_VOLUME, "MUTE");
+        }
     }
     else
     {
-        lv_label_set_text(label, LV_SYMBOL_VOLUME_MAX);
+        Serial.print("mute is unchecked, publishing UNMUTE");
+        if (mqttClient.connected())
+        {
+            mqttClient.publish(TOPIC_VOLUME, "UNMUTE");
+        }
     }
 }
 
 void nav_light_event_cb(lv_event_t *e)
 {
-    lv_obj_t * button = (lv_obj_t *)lv_event_get_user_data(e);
+    lv_obj_t *button = (lv_obj_t *)lv_event_get_user_data(e);
     // get toggle state
     bool is_toggled = lv_obj_has_state(button, LV_STATE_CHECKED);
     Serial.print("is_toggled: ");
@@ -208,7 +215,8 @@ void nav_light_event_cb(lv_event_t *e)
     {
         mqttClient.publish(TOPIC_COUCH_LIGHT, "ON");
     }
-    else {
+    else
+    {
         Serial.println("mqtt not connected");
     }
 }

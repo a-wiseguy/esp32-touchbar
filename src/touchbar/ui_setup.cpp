@@ -46,13 +46,13 @@ lv_obj_t* setup_main_menu()
     lv_obj_set_scrollbar_mode(cont_row, LV_SCROLLBAR_MODE_ACTIVE); // show scrollbar only while dragging
 
     // nav buttons creation
-    nav_btns[0] = create_nav_button(cont_row, LV_SYMBOL_VOLUME_MAX, true);  //mute btn
+    nav_btns[0] = create_nav_button(cont_row, LV_SYMBOL_MUTE, true);  //mute btn
     nav_btns[1] = create_nav_button(cont_row, LV_SYMBOL_VOLUME_MID, false); // vol btn
     nav_btns[2] = create_nav_button(cont_row, LV_SYMBOL_WIFI, false);
     nav_btns[3] = create_nav_button(cont_row, LV_SYMBOL_POWER, true);
 
     // Assign btn events for nav/actions
-    lv_obj_add_event_cb(nav_btns[0], nav_mute_event_cb, LV_EVENT_VALUE_CHANGED, lv_obj_get_child(nav_btns[0], 0));
+    lv_obj_add_event_cb(nav_btns[0], nav_mute_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_add_event_cb(nav_btns[1], nav_volume_event_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(nav_btns[2], nav_wifi_event_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(nav_btns[3], nav_light_event_cb, LV_EVENT_VALUE_CHANGED, nav_btns[3]);

@@ -6,6 +6,7 @@
 #include <PubSubClient.h> // mqtt client
 #include "ui_setup.h"     // menu layouts
 #include "mqtt_config.h"  // mqtt config
+#include <ArduinoJson.h>
 
 // two buffers to implement double buffering for better render performance
 static lv_disp_draw_buf_t draw_buf;
@@ -47,6 +48,9 @@ uint8_t ALS_ADDRESS = 0x3B; // I2C address for the touch controller; used for co
 extern lv_obj_t *main_menu;
 extern lv_obj_t *volume_screen;
 extern lv_obj_t *slider_label;
+
+// external objs
+extern lv_obj_t *vol_slider;
 
 // Forward declarations of event handler functions
 void slider_event_cb(lv_event_t *e);
@@ -157,18 +161,59 @@ void my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
     }
 }
 
+void mqtt_volume_cb(char *topic, byte *payload, unsigned int length)
+{
+    StaticJsonDocument<128> doc;
+
+    DeserializationError error = deserializeJson(doc, payload, length);
+    if (error)
+    {
+        Serial.println("Failed to parse JSON");
+        return;
+    }
+
+    // ignore messages from this device
+    const char *source = doc["source"];
+    if (strcmp(source, "esp32") == 0)
+    {
+        return;
+    }
+
+    // Get the volume value from the message
+    int volume = doc["volume"];
+    Serial.print("Received volume: ");
+    Serial.println(volume);
+
+    lv_slider_set_value(vol_slider, volume, LV_ANIM_OFF); // Set the slider value without animation
+    char buf[8];
+    lv_snprintf(buf, sizeof(buf), "%d%%", volume);
+    lv_label_set_text(slider_label, buf);
+
+}
+
 void slider_event_cb(lv_event_t *e)
 {
     lv_obj_t *slider = lv_event_get_target(e);
     char buf[8];
+
+    // Get the slider value
     lv_snprintf(buf, sizeof(buf), "%d%%", (int)lv_slider_get_value(slider));
     Serial.println(buf);
+
+    // Update the label with the slider value
     lv_label_set_text(slider_label, buf);
+
+    // Check if MQTT is connected
     if (mqttClient.connected())
     {
-        char buf[8];
-        lv_snprintf(buf, sizeof(buf), "%d", (int)lv_slider_get_value(slider));
-        mqttClient.publish(TOPIC_VOLUME, buf);
+        // Create a JSON payload with the volume value and the source identifier
+        StaticJsonDocument<128> doc;
+        doc["source"] = "esp32";
+        doc["volume"] = (int)lv_slider_get_value(slider);
+        char jsonBuffer[128];
+        serializeJson(doc, jsonBuffer, sizeof(jsonBuffer));
+
+        mqttClient.publish(TOPIC_VOLUME, jsonBuffer);
     }
 }
 
@@ -180,13 +225,13 @@ void nav_volume_event_cb(lv_event_t *e)
 
 void nav_mute_event_cb(lv_event_t *e)
 {
-    lv_obj_t * btn = lv_event_get_target(e);
+    lv_obj_t *btn = lv_event_get_target(e);
     if (lv_obj_has_state(btn, LV_STATE_CHECKED))
     {
         Serial.print("mute is checked, publishing MUTE");
         if (mqttClient.connected())
         {
-            mqttClient.publish(TOPIC_VOLUME, "MUTE");
+            mqttClient.publish(TOPIC_VOLUME, "MUTE", true);
         }
     }
     else
@@ -194,7 +239,7 @@ void nav_mute_event_cb(lv_event_t *e)
         Serial.print("mute is unchecked, publishing UNMUTE");
         if (mqttClient.connected())
         {
-            mqttClient.publish(TOPIC_VOLUME, "UNMUTE");
+            mqttClient.publish(TOPIC_VOLUME, "UNMUTE", true);
         }
     }
 }
@@ -227,22 +272,30 @@ void nav_wifi_event_cb(lv_event_t *e)
     lv_scr_load_anim(wifi_screen, LV_SCR_LOAD_ANIM_FADE_ON, 100, 0, false);
 }
 
+// Function to connect to MQTT and subscribe to a topic
 void connect_mqtt()
 {
     mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
+    mqttClient.setCallback(mqtt_volume_cb);
+
     while (!mqttClient.connected())
     {
         Serial.print("Attempting MQTT connection...");
-        // Attempt to connect
         if (mqttClient.connect("ESP32TOUCHBAR", MQTT_USER, MQTT_PASSWORD))
         {
-            Serial.println("mqtt connected");
+            Serial.println("MQTT connected");
+
+            // Subscribe to the volume topic once connected
+            mqttClient.subscribe(TOPIC_VOLUME);
+            Serial.print("Subscribed to topic: ");
+            Serial.println(TOPIC_VOLUME);
         }
         else
         {
             Serial.print("failed, rc=");
             Serial.print(mqttClient.state());
             Serial.println(" try again in 5 seconds");
+
             // Wait 5 seconds before retrying
             delay(5000);
         }
@@ -250,7 +303,7 @@ void connect_mqtt()
 }
 
 // Function to connect to Wi-Fi
-void setup_wifi()
+bool setup_wifi()
 {
     delay(10);
     Serial.println();
@@ -259,16 +312,30 @@ void setup_wifi()
 
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
-    while (WiFi.status() != WL_CONNECTED)
+    int wifiTimeout = 5; // Set the timeout value in seconds
+    int elapsedSeconds = 0;
+
+    while (WiFi.status() != WL_CONNECTED && elapsedSeconds < wifiTimeout)
     {
-        delay(500);
+        delay(1000); // Delay for 1 second
+        elapsedSeconds++;
         Serial.print(".");
     }
 
-    Serial.println("");
-    Serial.println("WiFi connected");
-    Serial.println("IP address: ");
-    Serial.println(WiFi.localIP());
+    if (WiFi.status() == WL_CONNECTED)
+    {
+        Serial.println("");
+        Serial.println("WiFi connected");
+        Serial.println("IP address: ");
+        Serial.println(WiFi.localIP());
+        return true;
+    }
+    else
+    {
+        Serial.println("");
+        Serial.println("WiFi connection failed");
+        return false;
+    }
 }
 
 void connect_wifi_event_cb(lv_event_t *e)
@@ -278,8 +345,10 @@ void connect_wifi_event_cb(lv_event_t *e)
     lv_obj_set_style_bg_color(wifi_btn, lv_palette_main(LV_PALETTE_RED), 0);
     lv_obj_add_state(wifi_btn, LV_STATE_DISABLED);
     // connect
-    setup_wifi();
-    connect_mqtt();
+    if (setup_wifi())
+    {
+        connect_mqtt();
+    }
     // after connect
     lv_obj_clear_state(wifi_btn, LV_STATE_DISABLED);
     lv_obj_set_style_bg_color(wifi_btn, lv_palette_main(LV_PALETTE_GREEN), 0);
@@ -372,6 +441,12 @@ void setup()
     setup_ui(); // build UI screens and components
 
     Serial.println("setup finished");
+
+    // connect to wifi and mqtt
+    if (setup_wifi())
+    {
+        connect_mqtt();
+    }
 }
 
 extern uint32_t transfer_num;
@@ -381,6 +456,18 @@ static int debounce1 = 0;
 void loop()
 {
     delay(1); // Short delay to prevent overwhelming the CPU.
+
+    // Reconnect to WiFi if connection is lost
+    if (WiFi.status() != WL_CONNECTED) {
+        setup_wifi();  // Reconnect to WiFi if needed
+    }
+
+    // Reconnect if the client is disconnected
+    if (!mqttClient.connected()) {
+        connect_mqtt();  // Reconnect to MQTT if needed
+    }
+
+    mqttClient.loop(); 
 
     // manage the timing of when the screen gets updated.
     if (transfer_num <= 0 && lcd_PushColors_len <= 0)
